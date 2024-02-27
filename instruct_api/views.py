@@ -8,9 +8,11 @@ import requests
 from PIL import Image, ImageDraw, ImageOps, ImageFont
 from .models import ProcessedImage
 from .instruct import *
+from .inpaint import * 
 from django.core.files.base import ContentFile 
 
 instruct = InstructPix2Pix(device="cuda:0")
+# inpaint = Inpainting()
 
 class InstructView(APIView):
 
@@ -46,6 +48,59 @@ class InstructView(APIView):
             # Create a new ProcessedImage object and save the image
             processed_image = ProcessedImage()
             processed_image.image.save('processed_image.png', ContentFile(img_io.read()), save=False)
+            processed_image.save()
+
+            # Construct the full URL to the saved image
+            # request_host = request.build_absolute_uri(location=None)
+            image_url = "http://localhost:8000" + processed_image.image.url
+            print(image_url)
+            # Save the updated_image in django server
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'image_url': image_url}, status=status.HTTP_200_OK)
+    
+
+class InpaintView(APIView):
+
+    def get(self, request, *args, **kwargs):
+
+        return Response({}, status=status.HTTP_200_OK)
+    
+    def post(self, request, *args, **kwargs):
+        '''
+        Create the Todo with given todo data
+        '''
+        data = request.data
+        image_url = data.get('image_url')  # Expecting the image as a URL
+        mask_url = data.get('mask_url')
+        prompt = data.get('prompt')
+
+
+        if not image_url:  # Check if image_url is None or empty
+            return Response({'error': 'image_url is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            response = requests.get(image_url)
+            image = BytesIO(response.content)
+            image = Image.open(image)  # Convert the downloaded image to a PIL Image
+
+            response2 = requests.get(mask_url)
+            mask = BytesIO(response2.content)
+            mask = Image.open(mask)  # Convert the downloaded image to a PIL Image
+
+            # Call the inference function and get a PIL Image back
+            updated_image = inpaint.inference(image, mask, prompt)
+
+            # Save the updated image to a BytesIO object
+            img_io = BytesIO()
+            updated_image.save(img_io, format='PNG')
+            img_io.seek(0)
+
+            # Create a new ProcessedImage object and save the image
+            processed_image = ProcessedImage()
+            processed_image.image.save('inpainted_image.png', ContentFile(img_io.read()), save=False)
             processed_image.save()
 
             # Construct the full URL to the saved image
